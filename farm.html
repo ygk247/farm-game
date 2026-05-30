@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>我的小菜园 - Q版农耕小游戏</title>
+<style>
+* {
+  margin:0; padding:0;
+  box-sizing:border-box;
+  font-family:"微软雅黑","幼圆",sans-serif;
+}
+body {
+  background:#f0f9e8;
+  background-image:radial-gradient(circle,#c8e6c9 10%,transparent 10%);
+  background-size:30px 30px;
+  min-height:100vh;
+  padding:15px;
+}
+.container {
+  max-width:600px;
+  margin:0 auto;
+  background:#fff;
+  border-radius:20px;
+  box-shadow:0 4px 15px rgba(80,160,80,0.2);
+  border:3px solid #a5d6a7;
+  overflow:hidden;
+}
+header {
+  background:#4caf50;
+  color:white;
+  text-align:center;
+  padding:12px;
+  font-size:22px;
+  font-weight:bold;
+}
+.info-bar {
+  display:flex;
+  justify-content:space-around;
+  background:#e8f5e9;
+  padding:8px 0;
+  font-size:15px;
+  color:#2e7d32;
+}
+.farm {
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  padding:15px;
+  background:#f9fbe7;
+}
+.plot {
+  aspect-ratio:1/1;
+  background:#d7ccc8;
+  border-radius:12px;
+  border:2px solid #bcaaa4;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  color:#555;
+  position:relative;
+  overflow:hidden;
+}
+.plot img {
+  width:80%;
+  height:80%;
+  object-fit:contain;
+}
+.toolbar {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px;
+  background:#fff3e0;
+}
+.btn {
+  flex:1;
+  min-width:80px;
+  padding:10px;
+  border:none;
+  border-radius:10px;
+  background:#81c784;
+  color:white;
+  font-size:14px;
+  cursor:pointer;
+  transition:transform 0.15s;
+}
+.btn:hover { transform:scale(1.05); }
+.btn:disabled { background:#ccc; cursor:not-allowed; transform:none; }
+.popup {
+  display:none;
+  position:fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  background:rgba(0,0,0,0.5);
+  align-items:center;
+  justify-content:center;
+  z-index:10;
+}
+.popup-box {
+  background:white;
+  padding:20px;
+  border-radius:15px;
+  width:90%; max-width:400px;
+  text-align:center;
+}
+.seed-item {
+  padding:10px;
+  margin:8px 0;
+  background:#e8f5e9;
+  border-radius:10px;
+  cursor:pointer;
+}
+.seed-item:hover { background:#c8e6c9; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>🌱 我的小菜园 🌱</header>
+  <div class="info-bar">
+    <span>💰 金币：<span id="gold">50</span></span>
+    <span>⭐ 等级：<span id="level">1</span></span>
+    <span>🌾 经验：<span id="exp">0</span>/100</span>
+  </div>
+
+  <div class="farm" id="farm">
+    <!-- 9块地 -->
+  </div>
+
+  <div class="toolbar">
+    <button class="btn" id="btnSeed">🌱 播种</button>
+    <button class="btn" id="btnWater">💧 浇水</button>
+    <button class="btn" id="btnFertilizer">🧪 施肥</button>
+    <button class="btn" id="btnHarvest">🌾 收获</button>
+    <button class="btn" id="btnShop">🏪 商店</button>
+  </div>
+</div>
+
+<!-- 种子弹窗 -->
+<div class="popup" id="seedPopup">
+  <div class="popup-box">
+    <h3>选择种子</h3>
+    <div id="seedList"></div>
+    <button class="btn" onclick="closePopup()">关闭</button>
+  </div>
+</div>
+
+<!-- 商店弹窗 -->
+<div class="popup" id="shopPopup">
+  <div class="popup-box">
+    <h3>农场商店</h3>
+    <div id="shopList"></div>
+    <button class="btn" onclick="closePopup()">关闭</button>
+  </div>
+</div>
+
+<script>
+// 游戏数据
+const crops = [
+  { id:1, name:"白菜", seedPrice:5, sellPrice:15, growTime:5000, stages:["","🥬"] },
+  { id:2, name:"胡萝卜", seedPrice:10, sellPrice:25, growTime:8000, stages:["","🥕"] },
+  { id:3, name:"小麦", seedPrice:15, sellPrice:40, growTime:12000, stages:["","🌾"] },
+  { id:4, name:"番茄", seedPrice:25, sellPrice:60, growTime:15000, stages:["","🍅"], unlockLevel:2 },
+  { id:5, name:"西瓜", seedPrice:40, sellPrice:100, growTime:20000, stages:["","🍉"], unlockLevel:3 }
+];
+
+let gold = 50;
+let level = 1;
+let exp = 0;
+let selectedPlot = null;
+let selectedSeed = null;
+
+// 9块地状态
+let plots = Array(9).fill(null);
+
+// 初始化农田
+const farmEl = document.getElementById("farm");
+for (let i=0; i<9; i++) {
+  const plot = document.createElement("div");
+  plot.className = "plot";
+  plot.dataset.id = i;
+  plot.textContent = "空地";
+  plot.addEventListener("click", () => selectPlot(i));
+  farmEl.appendChild(plot);
+}
+
+// 选中地块
+function selectPlot(id) {
+  selectedPlot = id;
+  updatePlots();
+}
+
+// 更新地块显示
+function updatePlots() {
+  const plotEls = document.querySelectorAll(".plot");
+  plotEls.forEach((el, i) => {
+    const data = plots[i];
+    if (!data) {
+      el.textContent = "空地";
+      el.innerHTML = "";
+    } else {
+      const crop = crops.find(c=>c.id===data.cropId);
+      const stage = data.stage;
+      el.innerHTML = `<span style="font-size:28px">${crop.stages[stage]}</span>`;
+    }
+    el.style.border = (selectedPlot===i) ? "2px solid #ff9800" : "2px solid #bcaaa4";
+  });
+}
+
+// 播种
+document.getElementById("btnSeed").addEventListener("click", () => {
+  if (selectedPlot===null || plots[selectedPlot]) return alert("请选择一块空地！");
+  showSeedPopup();
+});
+
+function showSeedPopup() {
+  const list = document.getElementById("seedList");
+  list.innerHTML = "";
+  crops.forEach(crop => {
+    if (crop.unlockLevel && level < crop.unlockLevel) return;
+    const item = document.createElement("div");
+    item.className = "seed-item";
+    item.textContent = `${crop.name} 种子 💰${crop.seedPrice}`;
+    item.addEventListener("click", () => {
+      if (gold < crop.seedPrice) return alert("金币不足！");
+      gold -= crop.seedPrice;
+      selectedSeed = crop.id;
+      closePopup();
+      plantSeed();
+    });
+    list.appendChild(item);
+  });
+  document.getElementById("seedPopup").style.display = "flex";
+}
+
+function plantSeed() {
+  plots[selectedPlot] = { cropId:selectedSeed, stage:0, watered:false, fertilized:false, growStart:null };
+  updatePlots();
+  updateInfo();
+}
+
+// 浇水
+document.getElementById("btnWater").addEventListener("click", () => {
+  if (selectedPlot===null || !plots[selectedPlot]) return;
+  plots[selectedPlot].watered = true;
+  startGrow(selectedPlot);
+});
+
+// 施肥
+document.getElementById("btnFertilizer").addEventListener("click", () => {
+  if (selectedPlot===null || !plots[selectedPlot]) return;
+  plots[selectedPlot].fertilized = true;
+  startGrow(selectedPlot);
+});
+
+function startGrow(id) {
+  const data = plots[id];
+  if (!data.watered || !data.fertilized || data.stage!==0) return;
+  if (!data.growStart) data.growStart = Date.now();
+  const crop = crops.find(c=>c.id===data.cropId);
+  const interval = setInterval(() => {
+    const elapsed = Date.now() - data.growStart;
+    if (elapsed >= crop.growTime) {
+      data.stage = 1;
+      clearInterval(interval);
+      updatePlots();
+    }
+  }, 500);
+}
+
+// 收获
+document.getElementById("btnHarvest").addEventListener("click", () => {
+  if (selectedPlot===null || !plots[selectedPlot]) return;
+  const data = plots[selectedPlot];
+  const crop = crops.find(c=>c.id===data.cropId);
+  if (data.stage !== 1) return alert("还没成熟哦！");
+  gold += crop.sellPrice;
+  addExp(20);
+  plots[selectedPlot] = null;
+  updatePlots();
+  updateInfo();
+  alert(`收获${crop.name}，获得${crop.sellPrice}金币！`);
+});
+
+// 商店
+document.getElementById("btnShop").addEventListener("click", () => {
+  const list = document.getElementById("shopList");
+  list.innerHTML = "";
+  crops.forEach(crop => {
+    if (crop.unlockLevel && level < crop.unlockLevel) return;
+    const item = document.createElement("div");
+    item.className = "seed-item";
+    item.textContent = `${crop.name} 种子 💰${crop.seedPrice}`;
+    list.appendChild(item);
+  });
+  document.getElementById("shopPopup").style.display = "flex";
+});
+
+function closePopup() {
+  document.querySelectorAll(".popup").forEach(p=>p.style.display="none");
+}
+
+function addExp(amount) {
+  exp += amount;
+  const need = level * 100;
+  if (exp >= need) {
+    exp -= need;
+    level++;
+    alert(`🎉 升级到 Lv.${level}！解锁新作物！`);
+  }
+  updateInfo();
+}
+
+function updateInfo() {
+  document.getElementById("gold").textContent = gold;
+  document.getElementById("level").textContent = level;
+  document.getElementById("exp").textContent = exp;
+}
+
+updatePlots();
+updateInfo();
+</script>
+</body>
+</html>
